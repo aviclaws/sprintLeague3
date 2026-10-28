@@ -1,0 +1,58 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../style.css"></head><body>
+<div id="app"></div><pre id="out"></pre>
+<script src="../core.js"></script>
+<script>
+localStorage.clear();
+var out=[]; function ok(c,m){ out.push((c?"PASS ":"FAIL ")+m); }
+</script>
+<script src="../app.js"></script>
+<script>
+function click(sel){ var e=document.querySelector(sel); if(!e) throw new Error("missing "+sel); e.click(); }
+function down(sel){ var e=document.querySelector(sel); if(!e) throw new Error("missing "+sel);
+  e.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,cancelable:true})); }
+function sleep(ms){ return new Promise(function(r){setTimeout(r,ms);}); }
+(async function(){
+ try{
+  window.alert=function(){}; window.confirm=function(){return true;}; window.prompt=function(){return "5.5";};
+  document.getElementById("bulk").value="Alex, 5.2, 5.4\nBen 6.0 6.2\nCal, 7.0\nDan 4.9\nEli\nFay, 6.5";
+  click("[data-a=bulk]");
+  ok(document.querySelectorAll(".player").length===6,"6 players imported");
+  click("[data-a=all]");
+  click("[data-a=to-teams]");
+  ok(document.querySelectorAll(".team").length===2,"teams rendered");
+  var tp=document.querySelectorAll(".tp").length; ok(tp===6,"6 players on teams");
+  var nW=JSON.parse(localStorage.getItem("sl3")).teams.white.length, nB=JSON.parse(localStorage.getItem("sl3")).teams.blue.length;
+  click("[data-a=start-practice]");
+  ok(!!document.querySelector(".startbtn"),"start button visible");
+  ok(/WHITE/.test(document.querySelector(".startbtn").textContent),"white runs first");
+  down("[data-a=go]");
+  await sleep(300);
+  ok(!!document.getElementById("clock"),"clock visible");
+  ok(document.querySelectorAll(".stop").length===nW,"one stop button per white runner: "+nW);
+  for(var i=0;i<nW;i++){
+    ok(document.querySelectorAll(".stop.done").length===i,"stopped so far "+i);
+    down("button.stop"); await sleep(260);
+  }
+  var wr=JSON.parse(localStorage.getItem("sl3")).runs[0].runners.map(function(x){return x.ms;});
+  ok(wr[0]>=250 && wr[1]>wr[0] && wr[2]>wr[1],"stop times increase from one shared start: "+wr.join(","));
+  ok(!document.getElementById("clock"),"white run ended after all stops");
+  ok(/START BLUE/.test(document.querySelector(".startbtn").textContent),"blue start offered next");
+  down("[data-a=go]"); await sleep(260);
+  ok(document.querySelectorAll(".stop").length===nB,"one stop button per blue runner: "+nB);
+  for(var j=0;j<nB;j++){ down("button.stop"); await sleep(260); }
+  ok(!document.getElementById("clock"),"blue run ended");
+  ok(!!document.querySelector("[data-a=next-round]"),"round complete shows next-round");
+  ok(document.querySelectorAll(".run").length===2,"2 runs listed");
+  click("[data-a=next-round]");
+  ok(!!document.querySelector(".startbtn"),"round 2 start");
+  click("[data-a=finish]");
+  var s=JSON.parse(localStorage.getItem("sl3"));
+  var runsSaved=s.players.reduce(function(a,p){return a+p.times.length;},0);
+  ok(runsSaved===7+6,"times saved to history, total="+runsSaved);
+  ok(s.log.length===1,"practice logged");
+  ok(!s.teams && s.runs.length===0,"session reset");
+  ok(JSON.parse(localStorage.getItem("sl3")).players.length===6,"persisted");
+ }catch(e){ out.push("ERROR "+e.message+" "+e.stack); }
+ document.getElementById("out").textContent=out.join("\n")+"\nDONE";
+})();
+</script></body></html>
