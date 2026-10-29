@@ -78,4 +78,37 @@ eq(st.white.ms, 11000, "white total");
 var runs2 = runs.concat(C.makeRound({ blue: ["a"], white: ["d"] }, 1, nameOf));
 eq(C.standings(runs2).done, 1, "unfinished round 2 not counted");
 
+// live-view snapshot
+var sp = [], sid = 0;
+function mkp(name, ts) { return { id: "p" + (sid++), name: name, times: ts.map(function (ms) { return { ms: ms, d: "x" }; }) }; }
+["Alex", "Ben", "Cal", "Dan"].forEach(function (n, i) { sp.push(mkp(n, [5000 + i * 500, 5100 + i * 500])); });
+sp.push(mkp("Eli", []));
+var sstate = { players: sp, teams: { blue: [sp[0].id, sp[2].id], white: [sp[1].id, sp[3].id] }, round: 0, running: null, runs: [] };
+sstate.runs = C.makeRound(sstate.teams, 0, function (id) { return sp.filter(function (p) { return p.id === id; })[0].name; });
+sstate.runs[0].runners[0].ms = 4000;
+sstate.running = { runId: sstate.runs[0].id, startedAt: 1 };
+var sn = C.buildSnapshot(sstate, 123);
+eq(sn.v, 1, "snapshot version");
+eq(sn.live, { team: "white", round: 1, stopped: 1, of: 2 }, "snapshot live run");
+eq(sn.runs.length, 1, "only timed/live runs included");
+eq(sn.runs[0].x[0], ["Ben", 4000], "snapshot run time");
+eq(sn.teams.blue[0], ["Alex", 5050], "snapshot team average");
+eq(sn.roster[sn.roster.length - 1], ["Eli", null, 0, []], "new player last, no avg");
+eq(C.buildSnapshot({ players: sp, teams: null, round: 0, running: null, runs: [] }, 1).round, 0, "no race yet");
+
+// big snapshot stays under the 4096-byte message limit
+var bigP = [], bigRuns = [];
+for (var q = 0; q < 30; q++) bigP.push(mkp("Player Number " + q, [5000, 5100, 5200, 5300, 5400, 5500, 5600]));
+var bigTeams = { blue: bigP.slice(0, 15).map(function (p) { return p.id; }), white: bigP.slice(15).map(function (p) { return p.id; }) };
+var bigName = function (id) { return bigP.filter(function (p) { return p.id === id; })[0].name; };
+for (var rr = 0; rr < 12; rr++) {
+  C.makeRound(bigTeams, rr, bigName).forEach(function (run) { run.runners.forEach(function (x, i) { x.ms = 4000 + i * 10; }); bigRuns.push(run); });
+}
+var bigSn = C.buildSnapshot({ players: bigP, teams: bigTeams, round: 11, running: null, runs: bigRuns }, 1);
+var bigLen = C.utf8len(JSON.stringify(bigSn));
+ok(bigLen <= 3600, "big snapshot fits: " + bigLen);
+eq(bigSn.score.done, 12, "score still covers every round");
+eq(bigSn.runs[bigSn.runs.length - 1].r, 12, "newest round kept");
+eq(C.utf8len("a\u00e9\u20ac"), 6, "utf8len");
+
 log(fails ? fails + " FAILURES" : "ALL TESTS PASSED");

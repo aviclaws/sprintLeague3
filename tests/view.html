@@ -1,0 +1,28 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../style.css"></head><body class="viewer">
+<div id="app"></div><pre id="out"></pre>
+<!-- Viewer page against a throwaway topic given as ?topic=... (run live.html first). -->
+<script>
+window.SL_CONFIG = { topic: new URLSearchParams(location.search).get("topic"), passcode: "pw" };
+</script>
+<script src="../core.js"></script>
+<script src="../view.js"></script>
+<script>
+function sleep(ms){ return new Promise(function(r){setTimeout(r,ms);}); }
+(async function(){
+ var out=[]; function ok(c,m){ out.push((c?"PASS ":"FAIL ")+m); }
+ try{
+  await sleep(2500);
+  var t=document.getElementById("app").textContent;
+  ok(/Sprint League/.test(t),"viewer renders title");
+  ok(!!document.querySelector(".score"),"score card shown");
+  ok(/running now/.test(t),"shows who is running now");
+  ok(document.querySelectorAll(".team").length===2,"both teams shown");
+  ok(/Alex/.test(t) && /Dan/.test(t),"player names shown");
+  ok(!document.querySelector("[data-a]") && !document.querySelector("input,textarea"),"no coach controls / inputs on viewer");
+  ok(!/clock|STOP|START/.test(t),"no clock or start/stop on viewer");
+  document.querySelector("button[data-v=people]").click();
+  ok(/Individual results/.test(document.getElementById("app").textContent) && document.querySelectorAll(".player").length===4,"averages tab lists 4 players");
+ }catch(e){ out.push("ERROR "+e.message); }
+ document.getElementById("out").textContent=out.join("\n")+"\nDONE";
+})();
+</script></body></html>

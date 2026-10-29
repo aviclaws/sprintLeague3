@@ -3,6 +3,23 @@
   "use strict";
   var C = window.SLCore;
   var KEY = "sl3";
+  var CFG = window.SL_CONFIG || {};
+
+  // ---------- coach passcode (keeps casual visitors out; not real security) ----------
+  if (CFG.passcode && localStorage.getItem("sl3auth") !== CFG.passcode) {
+    document.getElementById("app").innerHTML =
+      '<h1>Coach login</h1><div class="card"><div class="small muted" style="margin-bottom:8px">Enter the coach passcode. Just want to watch? ' +
+      '<a href="./" style="color:var(--blue)">Open the live view</a>.</div>' +
+      '<div class="row"><input id="pass" type="password" placeholder="Passcode" autocomplete="off" style="flex:1;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px;font:inherit">' +
+      '<button class="primary" id="passgo">Enter</button></div><div id="passerr" class="small" style="color:#fecaca;margin-top:8px"></div></div>';
+    var tryPass = function () {
+      if (document.getElementById("pass").value === CFG.passcode) { localStorage.setItem("sl3auth", CFG.passcode); location.reload(); }
+      else document.getElementById("passerr").textContent = "Wrong passcode.";
+    };
+    document.getElementById("passgo").addEventListener("click", tryPass);
+    document.getElementById("pass").addEventListener("keydown", function (e) { if (e.key === "Enter") tryPass(); });
+    return;
+  }
 
   // ---------- state ----------
   // players: [{id, name, times:[{ms, d}]}]   present: {id:true}
@@ -30,7 +47,30 @@
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(state)); }
     catch (e) { alert("Could not save data: " + e.message); }
+    schedulePublish();
   }
+
+  // ---------- live feed for the viewer page (ntfy.sh topic, no account needed) ----------
+  var pub = { timer: 0, lastBody: "", busy: false, failedAt: 0 };
+  function schedulePublish() {
+    if (!CFG.topic || typeof fetch !== "function") return;
+    clearTimeout(pub.timer);
+    pub.timer = setTimeout(publishNow, 700);
+  }
+  function publishNow() {
+    if (pub.busy) { pub.timer = setTimeout(publishNow, 700); return; }
+    var snap = C.buildSnapshot(state, Date.now()), ts = snap.ts;
+    snap.ts = 0;
+    var same = JSON.stringify(snap);
+    snap.ts = ts;
+    if (same === pub.lastBody) return; // nothing the viewers can see has changed
+    pub.busy = true;
+    fetch("https://ntfy.sh/" + encodeURIComponent(CFG.topic), { method: "POST", body: JSON.stringify(snap) })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); pub.lastBody = same; })
+      .catch(function () { pub.timer = setTimeout(publishNow, 6000); }) // offline or rate-limited: try again shortly
+      .then(function () { pub.busy = false; });
+  }
+  window.addEventListener("online", schedulePublish);
 
   // ---------- helpers ----------
   function P(id) { for (var i = 0; i < state.players.length; i++) if (state.players[i].id === id) return state.players[i]; return null; }
@@ -455,5 +495,6 @@
   // resume where we left off (e.g. page reloaded mid-practice)
   if (inRace()) ui.tab = "race"; else if (state.teams) ui.tab = "teams";
   render();
+  schedulePublish(); // viewers keep the last 12 hours only, so re-post whenever the coach opens the app
   if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register("sw.js").catch(function () {});
 })();

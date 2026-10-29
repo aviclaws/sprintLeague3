@@ -1,7 +1,7 @@
 {
   "name": "Sprint League",
   "short_name": "Sprint League",
-  "start_url": "./index.html",
+  "start_url": "./coach.html",
   "display": "standalone",
   "background_color": "#0b1220",
   "theme_color": "#0b1220",

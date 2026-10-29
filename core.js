@@ -184,10 +184,90 @@
     return s;
   }
 
+  // ---------- live-view snapshot ----------
+  function utf8len(s) {
+    var n = 0;
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      if (c < 0x80) n += 1;
+      else if (c < 0x800) n += 2;
+      else if (c >= 0xD800 && c <= 0xDBFF) { n += 4; i++; }
+      else n += 3;
+    }
+    return n;
+  }
+
+  /**
+   * Compact, read-only picture of the practice for the viewer page. It is sent
+   * as one message (ntfy allows 4096 bytes), so if it is too big the oldest
+   * rounds, then the per-player history, then the slowest players are dropped.
+   */
+  function buildSnapshot(state, now, maxBytes) {
+    maxBytes = maxBytes || 3600;
+    var byId = {};
+    state.players.forEach(function (p) { byId[p.id] = p; });
+    var nm = function (id) { return byId[id] ? byId[id].name : "?"; };
+    var rnd = function (v) { return v == null ? null : Math.round(v); };
+    var runs = state.runs || [];
+    var st = standings(runs);
+
+    var live = null;
+    if (state.running) {
+      runs.forEach(function (r) {
+        if (r.id === state.running.runId) {
+          live = { team: r.team, round: r.round + 1, stopped: r.runners.filter(function (x) { return x.ms != null; }).length, of: r.runners.length };
+        }
+      });
+    }
+
+    var teams = null;
+    if (state.teams) {
+      var side = function (ids) {
+        return ids.map(function (id) { return [nm(id), rnd(byId[id] ? avgMs(byId[id]) : null)]; })
+          .sort(function (a, b) { return (a[1] == null ? Infinity : a[1]) - (b[1] == null ? Infinity : b[1]); });
+      };
+      teams = { blue: side(state.teams.blue), white: side(state.teams.white) };
+    }
+
+    var snapRuns = runs.filter(function (r) {
+      return r.runners.some(function (x) { return x.ms != null; }) || (state.running && state.running.runId === r.id);
+    }).map(function (r) {
+      return { r: r.round + 1, t: r.team, x: r.runners.map(function (x) { return [nm(x.pid), x.ms]; }) };
+    });
+
+    var makeRoster = function (k) {
+      return state.players.map(function (p) {
+        var ts = (p.times || []).map(function (t) { return t.ms; });
+        return [p.name, rnd(avgMs(p)), ts.length, k ? ts.slice(-k) : []];
+      }).sort(function (a, b) { return (a[1] == null ? Infinity : a[1]) - (b[1] == null ? Infinity : b[1]); });
+    };
+
+    var K = 6;
+    var snap = {
+      v: 1, ts: now, round: runs.length ? state.round + 1 : 0, live: live,
+      score: st, teams: teams, runs: snapRuns, roster: makeRoster(K)
+    };
+    var size = function () { return utf8len(JSON.stringify(snap)); };
+    while (size() > maxBytes) {
+      var rounds = {};
+      snap.runs.forEach(function (r) { rounds[r.r] = 1; });
+      var keys = Object.keys(rounds).map(Number).sort(function (a, b) { return a - b; });
+      if (keys.length > 1) {
+        snap.runs = snap.runs.filter(function (r) { return r.r !== keys[0]; });
+      } else if (K > 0) {
+        K = K > 3 ? 3 : 0;
+        snap.roster = makeRoster(K);
+      } else if (snap.roster.length > 1) {
+        snap.roster.pop();
+      } else break;
+    }
+    return snap;
+  }
+
   root.SLCore = {
     fmt: fmt, parseTime: parseTime, parseRosterLine: parseRosterLine,
     avgMs: avgMs, avgsWithImputed: avgsWithImputed,
     balance: balance, makeRound: makeRound, runDone: runDone, runTotal: runTotal,
-    standings: standings, uid: uid
+    standings: standings, uid: uid, buildSnapshot: buildSnapshot, utf8len: utf8len
   };
 })(typeof self !== "undefined" ? self : this);

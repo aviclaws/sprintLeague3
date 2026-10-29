@@ -1,0 +1,37 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../style.css"></head><body>
+<div id="app"></div><pre id="out"></pre>
+<!-- Coach app publishes to a throwaway topic given as ?topic=... ; checks the posted snapshot. -->
+<script>
+var TOPIC = new URLSearchParams(location.search).get("topic");
+localStorage.clear(); localStorage.setItem("sl3auth", "pw");
+window.SL_CONFIG = { topic: TOPIC, passcode: "pw" };
+var out=[]; function ok(c,m){ out.push((c?"PASS ":"FAIL ")+m); }
+</script>
+<script src="../core.js"></script>
+<script src="../app.js"></script>
+<script>
+function click(sel){ var e=document.querySelector(sel); if(!e) throw new Error("missing "+sel); e.click(); }
+function down(sel){ document.querySelector(sel).dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,cancelable:true})); }
+function sleep(ms){ return new Promise(function(r){setTimeout(r,ms);}); }
+(async function(){
+ try{
+  window.alert=function(){}; window.confirm=function(){return true;};
+  document.getElementById("bulk").value="Alex, 5.2\nBen 6.0\nCal, 7.0\nDan 4.9";
+  click("[data-a=bulk]"); click("[data-a=all]"); click("[data-a=to-teams]"); click("[data-a=start-practice]");
+  down("[data-a=go]"); await sleep(300);
+  down("button.stop");
+  var lines=[], last=null;
+  for(var tries=0; tries<16; tries++){            // wait up to ~8s for the debounced post to land
+    await sleep(500);
+    var r=await fetch("https://ntfy.sh/"+TOPIC+"/json?poll=1&since=all"); var txt=(await r.text()).trim();
+    lines=txt?txt.split("\n"):[];
+    if(lines.length){ last=JSON.parse(JSON.parse(lines[lines.length-1]).message); if(last.live && last.live.stopped===1) break; }
+  }
+  ok(lines.length>=1,"coach app posted "+lines.length+" message(s)");
+  ok(last && last.v===1 && last.live && last.live.stopped===1,"latest snapshot shows live run with 1 stop");
+  ok(last && last.roster.length===4 && last.teams.blue.length===2,"snapshot has roster + teams");
+  ok(lines.length<=4,"debounced: not one message per tap ("+lines.length+")");
+ }catch(e){ out.push("ERROR "+e.message); }
+ document.getElementById("out").textContent=out.join("\n")+"\nDONE";
+})();
+</script></body></html>

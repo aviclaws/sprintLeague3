@@ -1,0 +1,11 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../style.css"></head><body>
+<div id="app"></div><pre id="out"></pre>
+<script>localStorage.clear(); window.SL_CONFIG={topic:"",passcode:"pw"}; var out=[]; function ok(c,m){out.push((c?"PASS ":"FAIL ")+m);}</script>
+<script src="../core.js"></script><script src="../app.js"></script>
+<script>
+ok(!!document.getElementById("pass") && !document.querySelector("[data-a=add-player]"),"locked: login shown, no coach controls");
+document.getElementById("pass").value="nope"; document.getElementById("passgo").click();
+ok(/Wrong/.test(document.getElementById("passerr").textContent) && localStorage.getItem("sl3auth")===null,"wrong passcode rejected");
+localStorage.setItem("sl3auth","pw");
+document.getElementById("out").textContent=out.join("\n")+"\nDONE";
+</script></body></html>
